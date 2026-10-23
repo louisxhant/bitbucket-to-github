@@ -17,7 +17,14 @@ const IS_WIN = process.platform === 'win32';
 const PUSH_BATCH = 40; // refspecs per `git push`, keeps the command line well under Windows limits
 const PRIORITY_BRANCHES = ['main', 'master', 'develop', 'dev'];
 
-class UserError extends Error {}
+// Errors shown to the user. `key` is a message id translated by the browser (public/i18n.js).
+class UserError extends Error {
+  constructor(key, params = {}) {
+    super(key);
+    this.key = key;
+    this.params = params;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Process helpers
@@ -79,15 +86,15 @@ async function gitOut(cwd, args) {
 // ---------------------------------------------------------------------------
 
 async function readRepo(dir) {
-  if (!dir || typeof dir !== 'string') throw new UserError('Chưa chọn thư mục.');
+  if (!dir || typeof dir !== 'string') throw new UserError('noFolder');
   const abs = path.resolve(dir);
-  if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) throw new UserError(`Thư mục không tồn tại: ${abs}`);
+  if (!fs.existsSync(abs) || !fs.statSync(abs).isDirectory()) throw new UserError('folderNotFound', { path: abs });
 
   const bare = (await gitOut(abs, ['rev-parse', '--is-bare-repository'])) === 'true';
   let root = abs;
   if (!bare) {
     const top = await gitOut(abs, ['rev-parse', '--show-toplevel']);
-    if (!top) throw new UserError(`Không phải git repository: ${abs}`);
+    if (!top) throw new UserError('notGitRepo', { path: abs });
     root = path.resolve(top);
   }
 
@@ -184,11 +191,11 @@ async function inspect({ path: dir, remote, prefer, role }) {
   const host = hostOf(url);
 
   const warnings = [];
-  if (!repo.remotes.size) warnings.push('Repo không có remote nào.');
-  if (role === 'source' && host && !host.includes('bitbucket')) warnings.push(`Remote "${remoteName}" không phải Bitbucket (${host}).`);
-  if (role === 'target' && host && !host.includes('github')) warnings.push(`Remote "${remoteName}" không phải GitHub (${host}).`);
-  if (repo.shallow) warnings.push('Repo là shallow clone — cần "git fetch --unshallow" trước khi migrate.');
-  if (repo.dirty) warnings.push(`Có ${repo.dirty} file chưa commit (không ảnh hưởng migrate, chỉ đẩy commit đã có).`);
+  if (!repo.remotes.size) warnings.push({ key: 'noRemotes' });
+  if (role === 'source' && host && !host.includes('bitbucket')) warnings.push({ key: 'notBitbucket', params: { remote: remoteName, host } });
+  if (role === 'target' && host && !host.includes('github')) warnings.push({ key: 'notGithub', params: { remote: remoteName, host } });
+  if (repo.shallow) warnings.push({ key: 'shallowWarn' });
+  if (repo.dirty) warnings.push({ key: 'dirtyWarn', params: { count: repo.dirty } });
 
   return {
     root: repo.root,
@@ -216,10 +223,19 @@ let activeJob = null;
 
 function createJob() {
   const job = { id: crypto.randomUUID(), logs: [], status: 'running', result: null, listeners: new Set(), child: null, cancelled: false };
-  job.log = (level, text) => {
-    const entry = { t: Date.now(), level, text: maskUrl(text) };
+  const push = (entry) => {
     job.logs.push(entry);
     for (const send of job.listeners) send('log', entry);
+  };
+  // Raw text (git output) is shown as is; messages are { key, params } translated by the browser.
+  job.log = (level, text) => push({ t: Date.now(), level, text: maskUrl(text) });
+  job.msg = (level, key, params = {}) => {
+    const masked = Object.fromEntries(Object.entries(params).map(([k, v]) => [k, typeof v === 'string' ? maskUrl(v) : v]));
+    push({ t: Date.now(), level, key, params: masked });
+  };
+  job.section = (key, params) => {
+    job.log('info', '');
+    job.msg('info', key, params);
   };
   job.finish = (status, result) => {
     job.status = status;
@@ -233,7 +249,7 @@ function createJob() {
 }
 
 async function step(job, cwd, args, { quiet = false, onLine } = {}) {
-  if (job.cancelled) throw new UserError('Đã huỷ.');
+  if (job.cancelled) throw new UserError('cancelled');
   job.log('cmd', `git ${args.join(' ')}`);
   const r = await git(cwd, args, {
     onSpawn: (c) => (job.child = c),
@@ -243,7 +259,7 @@ async function step(job, cwd, args, { quiet = false, onLine } = {}) {
     },
   });
   job.child = null;
-  if (job.cancelled) throw new UserError('Đã huỷ.');
+  if (job.cancelled) throw new UserError('cancelled');
   return r;
 }
 
@@ -259,7 +275,7 @@ function pushLineHandler(job, stats) {
     const to = (m[2].split(':')[1] || m[2]).replace(/^refs\/(heads|tags)\//, '');
     stats[flag] = (stats[flag] || 0) + 1;
     if (flag === 'rejected') stats.rejectedRefs.push(`${to}: ${m[3]}`);
-    job.log(flag === 'rejected' ? 'err' : flag === 'up-to-date' ? 'muted' : 'ok', `${flag.padEnd(12)} ${to}  ${m[3]}`);
+    job.msg(flag === 'rejected' ? 'err' : flag === 'up-to-date' ? 'muted' : 'ok', 'pushResult', { flag, ref: to, summary: m[3] });
     return true;
   };
 }
@@ -267,75 +283,75 @@ function pushLineHandler(job, stats) {
 async function migrate(job, opts) {
   const dryRun = Boolean(opts.dryRun);
   const force = Boolean(opts.force);
-  job.log('info', dryRun ? '=== CHẠY THỬ (dry-run) — không có gì được đẩy lên GitHub ===' : '=== BẮT ĐẦU MIGRATE ===');
+  job.msg('info', dryRun ? 'dryRunStart' : 'migrateStart');
 
   let src = await readRepo(opts.source);
   const tgt = await readRepo(opts.target);
-  if (src.root === tgt.root) throw new UserError('Thư mục nguồn và đích là cùng một repo.');
+  if (src.root === tgt.root) throw new UserError('sameRepo');
 
   const srcRemote = pickRemote(src, opts.sourceRemote);
   const tgtRemote = pickRemote(tgt, opts.targetRemote);
-  if (!tgtRemote) throw new UserError('Repo GitHub (đích) chưa có remote. Hãy clone từ GitHub hoặc chạy "git remote add origin <url>".');
+  if (!tgtRemote) throw new UserError('targetNoRemote');
   const tr = tgt.remotes.get(tgtRemote);
   const targetUrl = tr.pushUrl || tr.fetchUrl;
-  job.log('info', `Nguồn : ${src.root}${srcRemote ? ` (${srcRemote} → ${src.remotes.get(srcRemote).fetchUrl})` : ''}`);
-  job.log('info', `Đích  : ${tgt.root} (${tgtRemote} → ${targetUrl})`);
+  job.msg('info', 'logSource', { path: src.root, extra: srcRemote ? ` (${srcRemote} → ${src.remotes.get(srcRemote).fetchUrl})` : '' });
+  job.msg('info', 'logTarget', { path: tgt.root, extra: ` (${tgtRemote} → ${targetUrl})` });
 
   if (opts.fetch && srcRemote) {
-    job.log('info', `\n[1] Lấy dữ liệu mới nhất từ Bitbucket (${srcRemote})…`);
+    job.section('step1Fetch', { remote: srcRemote });
     const r = await step(job, src.root, ['fetch', srcRemote, '--prune', '--tags']);
-    if (r.code !== 0) throw new UserError(`git fetch thất bại (mã ${r.code}). Kiểm tra quyền truy cập Bitbucket.`);
+    if (r.code !== 0) throw new UserError('fetchFailed', { code: r.code });
     src = await readRepo(src.root);
   } else {
-    job.log('info', '\n[1] Bỏ qua fetch từ Bitbucket.');
+    job.section('step1Skip');
   }
-  if (src.shallow) throw new UserError('Repo nguồn là shallow clone. Chạy "git fetch --unshallow" rồi thử lại.');
+  if (src.shallow) throw new UserError('shallowSource');
 
   const all = computeBranches(src, srcRemote, opts.prefer);
   const wanted = Array.isArray(opts.branches) ? new Set(opts.branches) : null;
   const branches = wanted ? all.filter((b) => wanted.has(b.name)) : all;
   const missing = wanted ? [...wanted].filter((n) => !all.some((b) => b.name === n)) : [];
-  for (const n of missing) job.log('warn', `Bỏ qua nhánh không còn tồn tại: ${n}`);
-  if (!branches.length && !opts.tags) throw new UserError('Không có nhánh hoặc tag nào để đẩy.');
+  for (const n of missing) job.msg('warn', 'skipMissingBranch', { name: n });
+  if (!branches.length && !opts.tags) throw new UserError('nothingToPush');
 
   const stats = { rejectedRefs: [] };
   const pushBase = ['push', '--porcelain', ...(dryRun ? ['--dry-run'] : [])];
 
-  job.log('info', `\n[2] Đẩy ${branches.length} nhánh lên GitHub${force ? ' (force)' : ''}…`);
+  job.section(force ? 'step2PushForce' : 'step2Push', { count: branches.length });
   for (let i = 0; i < branches.length; i += PUSH_BATCH) {
     const specs = branches.slice(i, i + PUSH_BATCH).map((b) => `${force ? '+' : ''}${b.ref}:refs/heads/${b.name}`);
     const r = await step(job, src.root, [...pushBase, targetUrl, ...specs], { onLine: pushLineHandler(job, stats) });
-    if (r.code !== 0 && !stats.rejectedRefs.length) throw new UserError(`git push thất bại (mã ${r.code}). Kiểm tra quyền truy cập GitHub.`);
+    if (r.code !== 0 && !stats.rejectedRefs.length) throw new UserError('pushFailed', { code: r.code });
   }
 
   if (opts.tags) {
-    job.log('info', `\n[3] Đẩy ${src.tags.length} tag…`);
+    job.section('step3Tags', { count: src.tags.length });
     if (src.tags.length) {
       const r = await step(job, src.root, [...pushBase, targetUrl, `${force ? '+' : ''}refs/tags/*:refs/tags/*`], { onLine: pushLineHandler(job, stats) });
-      if (r.code !== 0 && !stats.rejectedRefs.length) throw new UserError(`git push tags thất bại (mã ${r.code}).`);
+      if (r.code !== 0 && !stats.rejectedRefs.length) throw new UserError('pushTagsFailed', { code: r.code });
     }
   } else {
-    job.log('info', '\n[3] Bỏ qua tag.');
+    job.section('step3Skip');
   }
 
   if (opts.lfs) {
-    job.log('info', '\n[4] Đồng bộ Git LFS…');
+    job.section('step4Lfs');
     const v = await git(src.root, ['lfs', 'version']);
     if (v.code !== 0) {
-      job.log('warn', 'Chưa cài git-lfs — bỏ qua bước LFS.');
+      job.msg('warn', 'lfsMissing');
     } else {
       if (srcRemote) {
         const f = await step(job, src.root, ['lfs', 'fetch', '--all', srcRemote]);
-        if (f.code !== 0) job.log('warn', 'git lfs fetch báo lỗi, vẫn tiếp tục đẩy các object đang có.');
+        if (f.code !== 0) job.msg('warn', 'lfsFetchFailed');
       }
       const p = await step(job, src.root, ['lfs', 'push', ...(dryRun ? ['--dry-run'] : []), '--all', targetUrl]);
-      if (p.code !== 0) stats.rejectedRefs.push('git lfs push thất bại');
+      if (p.code !== 0) stats.rejectedRefs.push('git lfs push');
     }
   }
 
   const verify = { checked: 0, mismatched: [] };
   if (!dryRun) {
-    job.log('info', '\n[5] Kiểm tra lại trên GitHub (ls-remote)…');
+    job.section('step5Verify');
     const r = await step(job, src.root, ['ls-remote', '--heads', '--tags', targetUrl], { quiet: true });
     if (r.code === 0) {
       const remote = new Map(r.stdout.split('\n').filter(Boolean).map((l) => l.split('\t').reverse()));
@@ -345,14 +361,17 @@ async function migrate(job, opts) {
         verify.checked++;
         if (remote.get(ref) !== sha) verify.mismatched.push(ref.replace(/^refs\/(heads|tags)\//, ''));
       }
-      if (verify.mismatched.length) job.log('err', `${verify.mismatched.length}/${verify.checked} ref không khớp: ${verify.mismatched.slice(0, 20).join(', ')}`);
-      else job.log('ok', `Tất cả ${verify.checked} ref trên GitHub khớp với Bitbucket.`);
+      if (verify.mismatched.length) {
+        job.msg('err', 'verifyMismatch', { bad: verify.mismatched.length, total: verify.checked, list: verify.mismatched.slice(0, 20).join(', ') });
+      } else {
+        job.msg('ok', 'verifyOk', { total: verify.checked });
+      }
     } else {
-      job.log('warn', 'Không đọc được ls-remote từ GitHub để kiểm tra.');
+      job.msg('warn', 'verifyUnavailable');
     }
 
     if (opts.syncTarget) {
-      job.log('info', `\n[6] Cập nhật repo GitHub local (fetch ${tgtRemote})…`);
+      job.section('step6Sync', { remote: tgtRemote });
       await step(job, tgt.root, ['fetch', tgtRemote, '--prune', '--tags']);
     }
   }
@@ -369,16 +388,19 @@ async function migrate(job, opts) {
 }
 
 async function startMigration(opts) {
-  if (activeJob) throw new UserError('Đang có một tiến trình migrate chạy.');
+  if (activeJob) throw new UserError('busy');
   const job = createJob();
   activeJob = job;
   migrate(job, opts).then(
     (result) => {
-      job.log(result.ok ? 'ok' : 'err', result.ok ? '\n✔ Hoàn tất.' : '\n✘ Hoàn tất nhưng có lỗi — xem log ở trên.');
+      job.log('info', '');
+      job.msg(result.ok ? 'ok' : 'err', result.ok ? 'finishedOk' : 'finishedWithErrors');
       job.finish(result.ok ? 'success' : 'failed', result);
     },
     (err) => {
-      job.log('err', `\n✘ ${err instanceof UserError ? err.message : err.stack || err}`);
+      job.log('err', '');
+      if (err instanceof UserError) job.msg('err', err.key, err.params);
+      else job.log('err', `✘ ${err.stack || err}`);
       job.finish(job.cancelled ? 'cancelled' : 'failed', null);
     },
   );
@@ -406,7 +428,7 @@ function browse(dir) {
   try {
     dirents = fs.readdirSync(abs, { withFileTypes: true });
   } catch (err) {
-    throw new UserError(`Không đọc được thư mục: ${abs} (${err.code})`);
+    throw new UserError('browseFailed', { path: abs, code: err.code });
   }
   const entries = dirents
     .filter((d) => d.isDirectory() && d.name !== '.git' && !d.name.startsWith('$'))
@@ -438,15 +460,15 @@ async function nativePick(initial, title) {
       "if ($d.ShowDialog($o) -eq 'OK') { [Console]::Out.Write($d.SelectedPath) }",
     ].join('; ');
     r = await run('powershell.exe', ['-NoProfile', '-STA', '-NonInteractive', '-Command', script], {
-      env: { PICK_TITLE: title || 'Chọn thư mục repo', PICK_INITIAL: initial || '' },
+      env: { PICK_TITLE: title || 'Select a folder', PICK_INITIAL: initial || '' },
     });
   } else if (process.platform === 'darwin') {
-    r = await run('osascript', ['-e', `POSIX path of (choose folder with prompt "${(title || 'Chọn thư mục').replace(/"/g, '')}")`]);
+    r = await run('osascript', ['-e', `POSIX path of (choose folder with prompt "${(title || 'Select a folder').replace(/"/g, '')}")`]);
   } else {
-    r = await run('zenity', ['--file-selection', '--directory', `--title=${title || 'Chọn thư mục'}`]);
+    r = await run('zenity', ['--file-selection', '--directory', `--title=${title || 'Select a folder'}`]);
   }
   const picked = r.stdout.trim();
-  if (!picked && r.code !== 0 && r.code !== 1) throw new UserError('Không mở được hộp thoại chọn thư mục — hãy dùng nút "Duyệt".');
+  if (!picked && r.code !== 0 && r.code !== 1) throw new UserError('pickerFailed');
   return picked || null;
 }
 
@@ -473,7 +495,7 @@ function readJson(req) {
       try {
         resolve(data ? JSON.parse(data) : {});
       } catch {
-        reject(new UserError('JSON không hợp lệ.'));
+        reject(new UserError('invalidJson'));
       }
     });
     req.on('error', reject);
@@ -512,11 +534,11 @@ async function handle(req, res) {
   const jm = p.match(/^\/api\/jobs\/([\w-]+)\/(events|cancel)$/);
   if (jm) {
     const job = jobs.get(jm[1]);
-    if (!job) return send(res, 404, { error: 'Không tìm thấy job.' });
+    if (!job) return send(res, 404, { error: 'Job not found', code: 'jobNotFound' });
     if (jm[2] === 'cancel' && req.method === 'POST') {
       job.cancelled = true;
       if (job.child) job.child.kill();
-      job.log('warn', 'Đang huỷ…');
+      job.msg('warn', 'cancelling');
       return send(res, 200, { ok: true });
     }
     if (jm[2] === 'events' && req.method === 'GET') {
@@ -546,13 +568,15 @@ async function handle(req, res) {
 const server = http.createServer((req, res) => {
   handle(req, res).catch((err) => {
     if (!(err instanceof UserError)) console.error(err);
-    if (!res.headersSent) send(res, err instanceof UserError ? 400 : 500, { error: err.message || String(err) });
+    if (res.headersSent) return;
+    if (err instanceof UserError) send(res, 400, { error: err.key, code: err.key, params: err.params });
+    else send(res, 500, { error: err.message || String(err) });
   });
 });
 
 server.listen(PORT, HOST, () => {
   const link = `http://localhost:${PORT}`;
-  console.log(`Bitbucket → GitHub migrator đang chạy tại ${link}  (Ctrl+C để dừng)`);
+  console.log(`Bitbucket → GitHub migrator running at ${link}  (Ctrl+C to stop)`);
   if (process.argv.includes('--no-open')) return;
   const opener = IS_WIN ? ['cmd', ['/c', 'start', '', link]] : process.platform === 'darwin' ? ['open', [link]] : ['xdg-open', [link]];
   try {

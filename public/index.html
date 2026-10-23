@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="vi">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -18,10 +18,11 @@
     }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  header { padding: 18px 24px; border-bottom: 1px solid var(--border); background: var(--panel); display: flex; align-items: center; gap: 12px; }
-  header h1 { font-size: 18px; margin: 0; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; }
+  header { padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--panel); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; }
   header .arrow { color: var(--muted); }
+  header label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
   main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 60px; display: grid; gap: 16px; }
   .repos { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   @media (max-width: 860px) { .repos { grid-template-columns: 1fr; } }
@@ -56,6 +57,7 @@
   .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 16px; }
   .opts label { display: flex; gap: 8px; align-items: flex-start; }
   .opts small { display: block; color: var(--muted); }
+  .opts small.danger { color: var(--err); }
   .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; flex-wrap: wrap; }
   #log { background: var(--log-bg); color: var(--log-text); border-radius: 8px; padding: 12px; height: 380px; overflow: auto; margin: 0; white-space: pre-wrap; word-break: break-all; }
   #log .cmd { color: #79c0ff; } #log .ok { color: #56d364; } #log .err { color: #ff7b72; }
@@ -75,69 +77,70 @@
 <body>
 <header>
   <h1>Bitbucket <span class="arrow">→</span> GitHub Migrator</h1>
+  <label><span data-i18n="language"></span> <select id="lang"></select></label>
 </header>
 
 <main>
   <section class="repos">
     <div class="card" id="card-source">
-      <h2><span class="badge bb">Bitbucket</span> Repo nguồn</h2>
+      <h2><span class="badge bb">Bitbucket</span> <span data-i18n="sourceTitle"></span></h2>
       <div class="row">
-        <input type="text" data-field="path" placeholder="Đường dẫn thư mục repo Bitbucket đã clone…">
-        <button data-act="pick" title="Mở hộp thoại chọn thư mục của hệ điều hành">Chọn…</button>
-        <button data-act="browse" title="Duyệt thư mục ngay trong trình duyệt">Duyệt</button>
+        <input type="text" data-field="path" data-i18n-placeholder="sourcePlaceholder">
+        <button data-act="pick" data-i18n="pick" data-i18n-title="pickTitle"></button>
+        <button data-act="browse" data-i18n="browse" data-i18n-title="browseTitle"></button>
       </div>
       <div data-field="details"></div>
     </div>
     <div class="card" id="card-target">
-      <h2><span class="badge gh">GitHub</span> Repo đích</h2>
+      <h2><span class="badge gh">GitHub</span> <span data-i18n="targetTitle"></span></h2>
       <div class="row">
-        <input type="text" data-field="path" placeholder="Đường dẫn thư mục repo GitHub đã clone…">
-        <button data-act="pick" title="Mở hộp thoại chọn thư mục của hệ điều hành">Chọn…</button>
-        <button data-act="browse" title="Duyệt thư mục ngay trong trình duyệt">Duyệt</button>
+        <input type="text" data-field="path" data-i18n-placeholder="targetPlaceholder">
+        <button data-act="pick" data-i18n="pick" data-i18n-title="pickTitle"></button>
+        <button data-act="browse" data-i18n="browse" data-i18n-title="browseTitle"></button>
       </div>
       <div data-field="details"></div>
     </div>
   </section>
 
   <section class="card">
-    <h2>Nhánh sẽ migrate</h2>
+    <h2 data-i18n="branchesTitle"></h2>
     <div class="toolbar">
-      <input type="text" id="filter" placeholder="Lọc theo tên nhánh…" style="max-width: 260px">
-      <button id="sel-all">Chọn tất cả</button>
-      <button id="sel-none">Bỏ chọn</button>
+      <input type="text" id="filter" data-i18n-placeholder="filterPlaceholder" style="max-width: 260px">
+      <button id="sel-all" data-i18n="selectAll"></button>
+      <button id="sel-none" data-i18n="selectNone"></button>
       <span class="spacer"></span>
-      <label class="status">Ưu tiên ref:
+      <label class="status"><span data-i18n="preferLabel"></span>
         <select id="prefer">
-          <option value="remote">nhánh remote (origin/*)</option>
-          <option value="local">nhánh local</option>
+          <option value="remote" data-i18n="preferRemote"></option>
+          <option value="local" data-i18n="preferLocal"></option>
         </select>
       </label>
     </div>
-    <div id="branches"><div class="empty">Chọn repo nguồn để xem danh sách nhánh.</div></div>
+    <div id="branches"></div>
   </section>
 
   <section class="card">
-    <h2>Tuỳ chọn</h2>
+    <h2 data-i18n="optionsTitle"></h2>
     <div class="opts">
-      <label><input type="checkbox" id="opt-fetch" checked><span>Fetch từ Bitbucket trước<small>Lấy toàn bộ nhánh/tag mới nhất trước khi đẩy.</small></span></label>
-      <label><input type="checkbox" id="opt-tags" checked><span>Đẩy tất cả tag<small id="tag-count">—</small></span></label>
-      <label><input type="checkbox" id="opt-sync" checked><span>Cập nhật repo GitHub local<small>Chạy git fetch trong thư mục đích sau khi đẩy.</small></span></label>
-      <label><input type="checkbox" id="opt-lfs"><span>Đồng bộ Git LFS<small>Cần cài git-lfs. Tự bật nếu repo dùng LFS.</small></span></label>
-      <label><input type="checkbox" id="opt-force"><span>Force push<small style="color: var(--err)">Ghi đè lịch sử nhánh/tag đã có trên GitHub.</small></span></label>
+      <label><input type="checkbox" id="opt-fetch" checked><span><span data-i18n="optFetch"></span><small data-i18n="optFetchHint"></small></span></label>
+      <label><input type="checkbox" id="opt-tags" checked><span><span data-i18n="optTags"></span><small id="tag-count">—</small></span></label>
+      <label><input type="checkbox" id="opt-sync" checked><span><span data-i18n="optSync"></span><small data-i18n="optSyncHint"></small></span></label>
+      <label><input type="checkbox" id="opt-lfs"><span><span data-i18n="optLfs"></span><small data-i18n="optLfsHint"></small></span></label>
+      <label><input type="checkbox" id="opt-force"><span><span data-i18n="optForce"></span><small class="danger" data-i18n="optForceHint"></small></span></label>
     </div>
     <div class="actions">
-      <button id="btn-dry">Chạy thử (dry-run)</button>
-      <button id="btn-run" class="primary">Migrate</button>
-      <button id="btn-cancel" class="danger" hidden>Huỷ</button>
+      <button id="btn-dry" data-i18n="btnDry"></button>
+      <button id="btn-run" class="primary" data-i18n="btnRun"></button>
+      <button id="btn-cancel" class="danger" data-i18n="btnCancel" hidden></button>
     </div>
   </section>
 
   <section class="card">
     <div class="toolbar">
-      <h2 style="margin:0">Log</h2>
+      <h2 style="margin:0" data-i18n="logTitle"></h2>
       <span class="spacer"></span>
-      <span class="status" id="job-status">Chưa chạy.</span>
-      <button id="btn-clear">Xoá log</button>
+      <span class="status" id="job-status"></span>
+      <button id="btn-clear" data-i18n="clearLog"></button>
     </div>
     <pre id="log"></pre>
     <div class="summary" id="summary"></div>
@@ -147,28 +150,33 @@
 <dialog id="browser">
   <div class="dlg-head">
     <div class="row">
-      <button id="dlg-up" title="Lên thư mục cha">↑</button>
-      <input type="text" id="dlg-path" placeholder="Đường dẫn">
-      <button id="dlg-go">Đi</button>
+      <button id="dlg-up" data-i18n-title="dlgUp">↑</button>
+      <input type="text" id="dlg-path" data-i18n-placeholder="dlgPath">
+      <button id="dlg-go" data-i18n="dlgGo"></button>
     </div>
   </div>
   <div class="dlg-list" id="dlg-list"></div>
   <div class="dlg-foot">
     <span class="status" id="dlg-status"></span>
-    <button id="dlg-cancel">Huỷ</button>
-    <button id="dlg-ok" class="primary">Chọn thư mục này</button>
+    <button id="dlg-cancel" data-i18n="dlgCancel"></button>
+    <button id="dlg-ok" class="primary" data-i18n="dlgOk"></button>
   </div>
 </dialog>
 
+<script src="i18n.js"></script>
 <script>
 const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const short = (sha) => (sha ? sha.slice(0, 8) : '');
+const t = (key, params) => i18n.t(key, params);
+// Errors from the server carry a message key; anything else falls back to its raw text.
+const errText = (err) => (err.code ? t(err.code, err.params) : err.message);
 
 async function api(url, body) {
   const res = await fetch(url, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) throw Object.assign(new Error(data.error || `HTTP ${res.status}`), { code: data.code, params: data.params });
   return data;
 }
 
@@ -177,35 +185,63 @@ const store = {
   set(k, v) { try { localStorage.setItem('b2g.' + k, v); } catch {} },
 };
 
+// ---------------------------------------------------------------- language
+function applyStatic() {
+  document.documentElement.lang = i18n.lang;
+  for (const el of $$('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  for (const el of $$('[data-i18n-placeholder]')) el.placeholder = t(el.dataset.i18nPlaceholder);
+  for (const el of $$('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle);
+}
+
+function setLanguage(lang) {
+  i18n.lang = MESSAGES[lang] ? lang : 'en';
+  store.set('lang', i18n.lang);
+  $('#lang').value = i18n.lang;
+  applyStatic();
+  for (const role of ['source', 'target']) renderDetails(role);
+  renderTagCount();
+  refreshBranches();
+  renderLog();
+  renderJobStatus();
+}
+
+$('#lang').innerHTML = LANGUAGES.map(([code, name]) => `<option value="${code}">${esc(name)}</option>`).join('');
+$('#lang').addEventListener('change', (e) => setLanguage(e.target.value));
+
 // ---------------------------------------------------------------- repo cards
-const state = { source: null, target: null, selected: new Set(), running: false };
+const state = {
+  source: null, target: null,
+  details: { source: null, target: null }, // { loading } | { error } | null
+  selected: new Set(), running: false,
+  job: { phase: 'idle', dryRun: false, status: null, result: null },
+};
 
 function setupCard(role) {
   const card = $(`#card-${role}`);
   const input = $('[data-field=path]', card);
-  const details = $('[data-field=details]', card);
-  const title = role === 'source' ? 'Chọn thư mục repo Bitbucket' : 'Chọn thư mục repo GitHub';
 
   const load = async (remote) => {
     const p = input.value.trim();
-    if (!p) { state[role] = null; details.innerHTML = ''; refreshBranches(); return; }
-    details.innerHTML = '<div class="empty">Đang đọc repo…</div>';
+    if (!p) { state[role] = null; state.details[role] = null; renderDetails(role); refreshBranches(); return; }
+    state.details[role] = { loading: true };
+    renderDetails(role);
     try {
       const info = await api('/api/inspect', { path: p, remote, prefer: $('#prefer').value, role });
       state[role] = info;
+      state.details[role] = null;
       input.value = info.root;
       store.set(role, info.root);
-      renderDetails(role, details, info);
       if (role === 'source') {
-        $('#tag-count').textContent = `${info.tagCount} tag trong repo nguồn.`;
         if (info.lfs) $('#opt-lfs').checked = true;
         if (!state.keepSelection) state.selected = new Set(info.branches.map((b) => b.name));
         state.keepSelection = false;
       }
     } catch (err) {
       state[role] = null;
-      details.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+      state.details[role] = { error: err };
     }
+    renderDetails(role);
+    renderTagCount();
     refreshBranches();
   };
   card.load = load;
@@ -216,10 +252,11 @@ function setupCard(role) {
     const btn = e.currentTarget;
     btn.disabled = true;
     try {
+      const title = t(role === 'source' ? 'pickDialogSource' : 'pickDialogTarget');
       const { path } = await api('/api/pick-folder', { initial: input.value.trim(), title });
       if (path) { input.value = path; load(); }
     } catch (err) {
-      alert(err.message);
+      alert(errText(err));
     } finally {
       btn.disabled = false;
     }
@@ -228,7 +265,7 @@ function setupCard(role) {
     const path = await openBrowser(input.value.trim() || store.get(role === 'source' ? 'target' : 'source') || '');
     if (path) { input.value = path; load(); }
   });
-  details.addEventListener('change', (e) => {
+  $('[data-field=details]', card).addEventListener('change', (e) => {
     if (e.target.matches('[data-field=remote]')) { if (role === 'source') state.keepSelection = true; load(e.target.value); }
   });
 
@@ -236,52 +273,69 @@ function setupCard(role) {
   if (saved) { input.value = saved; load(); }
 }
 
-function renderDetails(role, el, info) {
+function renderDetails(role) {
+  const el = $(`#card-${role} [data-field=details]`);
+  const d = state.details[role];
+  const info = state[role];
+  if (d?.loading) { el.innerHTML = `<div class="empty">${esc(t('reading'))}</div>`; return; }
+  if (d?.error) { el.innerHTML = `<div class="error">${esc(errText(d.error))}</div>`; return; }
+  if (!info) { el.innerHTML = ''; return; }
   const remoteSel = info.remotes.length
     ? `<select data-field="remote">${info.remotes.map((r) => `<option ${r.name === info.remote ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>`
-    : '<span class="error">không có</span>';
+    : `<span class="error">${esc(t('none'))}</span>`;
   const local = info.branches.filter((b) => b.localSha).length;
   const remote = info.branches.filter((b) => b.remoteSha).length;
   el.innerHTML = `
     <dl class="info">
-      <dt>Remote</dt><dd>${remoteSel}</dd>
-      <dt>URL</dt><dd class="mono">${esc(info.remoteUrl) || '—'}</dd>
-      <dt>Nhánh hiện tại</dt><dd>${esc(info.currentBranch || (info.bare ? '(bare repo)' : '—'))}</dd>
-      <dt>Nhánh</dt><dd>${info.branches.length} (local ${local}, ${esc(info.remote || 'remote')} ${remote})</dd>
-      <dt>Tag</dt><dd>${info.tagCount}${info.lfs ? ' · <span class="tag">Git LFS</span>' : ''}</dd>
+      <dt>${esc(t('remoteLabel'))}</dt><dd>${remoteSel}</dd>
+      <dt>${esc(t('urlLabel'))}</dt><dd class="mono">${esc(info.remoteUrl) || '—'}</dd>
+      <dt>${esc(t('currentBranchLabel'))}</dt><dd>${esc(info.currentBranch || (info.bare ? t('bareRepo') : '—'))}</dd>
+      <dt>${esc(t('branchesLabel'))}</dt><dd>${esc(t('branchesCount', { total: info.branches.length, local, remote, remoteName: info.remote || 'remote' }))}</dd>
+      <dt>${esc(t('tagsLabel'))}</dt><dd>${info.tagCount}${info.lfs ? ' · <span class="tag">Git LFS</span>' : ''}</dd>
     </dl>
-    ${info.warnings.length ? `<ul class="warn">${info.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}`;
+    ${info.warnings.length ? `<ul class="warn">${info.warnings.map((w) => `<li>${esc(t(w.key, w.params))}</li>`).join('')}</ul>` : ''}`;
+}
+
+function renderTagCount() {
+  $('#tag-count').textContent = state.source ? t('tagCount', { count: state.source.tagCount }) : '—';
 }
 
 // ---------------------------------------------------------------- branches
 function refreshBranches() {
   const box = $('#branches');
   const src = state.source;
-  if (!src) { box.innerHTML = '<div class="empty">Chọn repo nguồn để xem danh sách nhánh.</div>'; updateButtons(); return; }
-  if (!src.branches.length) { box.innerHTML = '<div class="empty">Repo nguồn không có nhánh nào.</div>'; updateButtons(); return; }
+  if (!src) { box.innerHTML = `<div class="empty">${esc(t('emptySelectSource'))}</div>`; updateButtons(); return; }
+  if (!src.branches.length) { box.innerHTML = `<div class="empty">${esc(t('noBranches'))}</div>`; updateButtons(); return; }
 
   const onTarget = new Map((state.target?.branches || []).map((b) => [b.name, b.remoteSha]));
-  const q = $('#filter').value.trim().toLowerCase();
-  const rows = src.branches.filter((b) => !q || b.name.toLowerCase().includes(q)).map((b) => {
+  const rows = visibleBranches().map((b) => {
     let status = '<span class="tag">?</span>';
     if (state.target) {
-      const t = onTarget.get(b.name);
-      status = !t ? '<span class="tag new">mới</span>' : t === b.sha ? '<span class="tag same">đã giống</span>' : '<span class="tag diff">khác</span>';
+      const sha = onTarget.get(b.name);
+      status = !sha ? `<span class="tag new">${esc(t('statusNew'))}</span>`
+        : sha === b.sha ? `<span class="tag same">${esc(t('statusSame'))}</span>`
+        : `<span class="tag diff">${esc(t('statusDiff'))}</span>`;
     }
+    const diverged = b.diverged ? ` <span class="tag diff" title="${esc(t('divergedTitle'))}">${esc(t('statusDiverged'))}</span>` : '';
     return `<tr>
       <td><input type="checkbox" data-branch="${esc(b.name)}" ${state.selected.has(b.name) ? 'checked' : ''}></td>
       <td class="name">${esc(b.name)}</td>
       <td class="mono">${short(b.sha)}</td>
-      <td>${b.from === 'remote' ? esc(`${src.remote}/`) : 'local'}${b.diverged ? ' <span class="tag diff" title="Nhánh local và remote đang khác nhau">lệch</span>' : ''}</td>
+      <td>${b.from === 'remote' ? esc(`${src.remote}/`) : 'local'}${diverged}</td>
       <td>${status}</td>
     </tr>`;
   });
   box.innerHTML = `<div class="table-wrap"><table>
-    <thead><tr><th></th><th>Nhánh</th><th>Commit</th><th>Lấy từ</th><th title="Dựa trên thông tin tracking của repo GitHub local">Trên GitHub</th></tr></thead>
-    <tbody>${rows.join('') || '<tr><td colspan="5" class="empty">Không có nhánh khớp bộ lọc.</td></tr>'}</tbody>
+    <thead><tr><th></th><th>${esc(t('colBranch'))}</th><th>${esc(t('colCommit'))}</th><th>${esc(t('colFrom'))}</th><th title="${esc(t('colOnGithubTitle'))}">${esc(t('colOnGithub'))}</th></tr></thead>
+    <tbody>${rows.join('') || `<tr><td colspan="5" class="empty">${esc(t('noMatch'))}</td></tr>`}</tbody>
   </table></div>
-  <div class="status" style="margin-top:6px">Đã chọn ${state.selected.size}/${src.branches.length} nhánh.</div>`;
+  <div class="status" style="margin-top:6px">${esc(t('selectedCount', { selected: state.selected.size, total: src.branches.length }))}</div>`;
   updateButtons();
+}
+
+function visibleBranches() {
+  const q = $('#filter').value.trim().toLowerCase();
+  return (state.source?.branches || []).filter((b) => !q || b.name.toLowerCase().includes(q));
 }
 
 $('#branches').addEventListener('change', (e) => {
@@ -291,10 +345,6 @@ $('#branches').addEventListener('change', (e) => {
   refreshBranches();
 });
 $('#filter').addEventListener('input', refreshBranches);
-const visibleBranches = () => {
-  const q = $('#filter').value.trim().toLowerCase();
-  return (state.source?.branches || []).filter((b) => !q || b.name.toLowerCase().includes(q));
-};
 $('#sel-all').addEventListener('click', () => { visibleBranches().forEach((b) => state.selected.add(b.name)); refreshBranches(); });
 $('#sel-none').addEventListener('click', () => { visibleBranches().forEach((b) => state.selected.delete(b.name)); refreshBranches(); });
 $('#prefer').addEventListener('change', () => { state.keepSelection = true; $('#card-source').load(state.source?.remote); });
@@ -309,29 +359,67 @@ function updateButtons() {
 $('#opt-tags').addEventListener('change', updateButtons);
 
 const logEl = $('#log');
-function appendLog({ level, text }) {
-  const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
+const logEntries = [];
+
+function formatEntry(e) {
+  if (!e.key) return (e.level === 'cmd' ? '$ ' : '') + e.text;
+  if (e.key === 'pushResult') return t('pushResult', { ...e.params, flag: t(`flag.${e.params.flag}`).padEnd(12) });
+  return t(e.key, e.params);
+}
+function entryNode(e) {
   const span = document.createElement('span');
-  span.className = level;
-  span.textContent = (level === 'cmd' ? '$ ' : '') + text + '\n';
-  logEl.appendChild(span);
+  span.className = e.level;
+  span.textContent = formatEntry(e) + '\n';
+  return span;
+}
+function appendLog(entry) {
+  logEntries.push(entry);
+  const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
+  logEl.appendChild(entryNode(entry));
   if (atBottom) logEl.scrollTop = logEl.scrollHeight;
 }
-$('#btn-clear').addEventListener('click', () => { logEl.textContent = ''; $('#summary').textContent = ''; });
+function renderLog() {
+  const top = logEl.scrollTop;
+  logEl.replaceChildren(...logEntries.map(entryNode));
+  logEl.scrollTop = top;
+}
+$('#btn-clear').addEventListener('click', () => {
+  logEntries.length = 0;
+  renderLog();
+  if (!state.running) { state.job = { phase: 'idle' }; renderJobStatus(); }
+});
+
+function renderJobStatus() {
+  const job = state.job;
+  const suffix = job.dryRun ? t('dryRunSuffix') : '';
+  if (job.phase === 'idle') $('#job-status').textContent = t('notRun');
+  else if (job.phase === 'running') $('#job-status').textContent = t(job.dryRun ? 'runningDry' : 'runningMigrate');
+  else {
+    const key = { success: 'statusSuccess', failed: 'statusFailed', cancelled: 'statusCancelled' }[job.status];
+    $('#job-status').textContent = (key ? t(key) : job.status) + suffix;
+  }
+  const r = job.phase === 'done' ? job.result : null;
+  if (!r) { $('#summary').textContent = ''; return; }
+  const parts = [t('summaryBranches', { n: r.branches }), t('summaryTags', { n: r.tags })];
+  for (const k of ['new', 'fast-forward', 'forced', 'up-to-date', 'rejected']) if (r.stats[k]) parts.push(`${t(`flag.${k}`)}: ${r.stats[k]}`);
+  if (r.verify?.checked) parts.push(t('summaryVerify', { ok: r.verify.checked - r.verify.mismatched.length, total: r.verify.checked }));
+  $('#summary').textContent = parts.join(' · ');
+}
 
 let currentJob = null;
 async function startJob(dryRun) {
   const force = $('#opt-force').checked;
   if (!dryRun) {
-    const msg = `Đẩy ${state.selected.size} nhánh${$('#opt-tags').checked ? ' và tất cả tag' : ''} lên:\n${state.target.remoteUrl}` +
-      (force ? '\n\n⚠ FORCE PUSH: lịch sử trên GitHub sẽ bị ghi đè!' : '') + '\n\nTiếp tục?';
+    const params = { count: state.selected.size, url: state.target.remoteUrl };
+    const msg = t($('#opt-tags').checked ? 'confirmPushTags' : 'confirmPush', params) +
+      (force ? '\n\n' + t('confirmForce') : '') + '\n\n' + t('confirmContinue');
     if (!confirm(msg)) return;
   }
   state.running = true;
+  state.job = { phase: 'running', dryRun };
   updateButtons();
-  $('#summary').textContent = '';
-  $('#job-status').textContent = dryRun ? 'Đang chạy thử…' : 'Đang migrate…';
-  if (logEl.textContent) appendLog({ level: 'muted', text: '\n' + '─'.repeat(60) });
+  renderJobStatus();
+  if (logEntries.length) appendLog({ level: 'muted', text: '\n' + '─'.repeat(60) });
   try {
     const { jobId } = await api('/api/migrate', {
       source: state.source.root,
@@ -353,7 +441,7 @@ async function startJob(dryRun) {
     es.addEventListener('done', (e) => { es.close(); finishJob(JSON.parse(e.data)); });
     es.onerror = () => { if (es.readyState === EventSource.CLOSED) finishJob({ status: 'failed', result: null }); };
   } catch (err) {
-    appendLog({ level: 'err', text: err.message });
+    appendLog(err.code ? { level: 'err', key: err.code, params: err.params } : { level: 'err', text: err.message });
     finishJob({ status: 'failed', result: null });
   }
 }
@@ -362,15 +450,8 @@ function finishJob({ status, result }) {
   if (!state.running) return;
   state.running = false;
   currentJob = null;
-  const label = { success: '✔ Thành công', failed: '✘ Thất bại', cancelled: 'Đã huỷ' }[status] || status;
-  $('#job-status').textContent = label + (result?.dryRun ? ' (dry-run)' : '');
-  if (result) {
-    const s = result.stats;
-    const parts = [`${result.branches} nhánh`, `${result.tags} tag`];
-    for (const k of ['new', 'fast-forward', 'forced', 'up-to-date', 'rejected']) if (s[k]) parts.push(`${k}: ${s[k]}`);
-    if (result.verify?.checked) parts.push(`kiểm tra: ${result.verify.checked - result.verify.mismatched.length}/${result.verify.checked} khớp`);
-    $('#summary').textContent = parts.join(' · ');
-  }
+  state.job = { phase: 'done', dryRun: state.job.dryRun, status, result };
+  renderJobStatus();
   updateButtons();
   if (!result?.dryRun) $('#card-target').load(state.target?.remote);
 }
@@ -381,10 +462,10 @@ $('#btn-cancel').addEventListener('click', () => { if (currentJob) api(`/api/job
 
 // ---------------------------------------------------------------- folder browser
 const dlg = $('#browser');
-let dlgState = { path: '', parent: null, resolve: null };
+const dlgState = { path: '', parent: null, resolve: null };
 
 async function dlgNavigate(p) {
-  $('#dlg-status').textContent = 'Đang tải…';
+  $('#dlg-status').textContent = t('loading');
   try {
     const data = await api(`/api/browse?path=${encodeURIComponent(p)}`);
     dlgState.path = data.path;
@@ -394,10 +475,10 @@ async function dlgNavigate(p) {
     $('#dlg-ok').disabled = !data.path;
     $('#dlg-list').innerHTML = data.entries.map((e) =>
       `<div data-path="${esc(e.path)}">📁 <span>${esc(e.name)}</span>${e.isGit ? ' <span class="tag same">git</span>' : ''}</div>`
-    ).join('') || '<div class="empty" style="cursor:default">(không có thư mục con)</div>';
-    $('#dlg-status').textContent = data.isGit ? 'Thư mục này là git repo.' : '';
+    ).join('') || `<div class="empty" style="cursor:default">${esc(t('noSubfolders'))}</div>`;
+    $('#dlg-status').textContent = data.isGit ? t('isGitRepo') : '';
   } catch (err) {
-    $('#dlg-status').textContent = err.message;
+    $('#dlg-status').textContent = errText(err);
   }
 }
 
@@ -426,6 +507,7 @@ $('#dlg-cancel').addEventListener('click', () => closeBrowser(null));
 $('#dlg-ok').addEventListener('click', () => closeBrowser(dlgState.path));
 dlg.addEventListener('cancel', () => closeBrowser(null));
 
+setLanguage(store.get('lang') || 'en');
 setupCard('source');
 setupCard('target');
 </script>

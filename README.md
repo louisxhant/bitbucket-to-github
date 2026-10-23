@@ -27,6 +27,9 @@ Hoặc nhấp đúp `start.bat` trên Windows. Trình duyệt sẽ tự mở `ht
 
 ## Sử dụng
 
+Giao diện hỗ trợ English (mặc định), Tiếng Việt, 中文, Русский, 日本語, Français — chọn ở góc trên bên phải,
+lựa chọn được ghi nhớ cho lần sau. Bản dịch nằm trong `public/i18n.js`.
+
 1. **Repo nguồn (Bitbucket)** và **Repo đích (GitHub)**: nhập đường dẫn, hoặc
    - **Chọn…** — mở hộp thoại chọn thư mục của hệ điều hành,
    - **Duyệt** — duyệt thư mục ngay trong trang web (thư mục là git repo có nhãn `git`).
