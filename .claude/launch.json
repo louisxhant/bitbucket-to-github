@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "migrator",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.js", "--no-open"],
+      "port": 5178
+    }
+  ]
+}

@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bitbucket → GitHub Migrator</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #fff; --text: #1d2330; --muted: #6b7385; --border: #dde1e8;
+    --accent: #2f6feb; --accent-text: #fff; --ok: #1a7f37; --warn: #9a6700; --err: #cf222e;
+    --bb: #0052cc; --gh: #24292f; --chip: #eef1f5; --log-bg: #0f1419; --log-text: #d6dde6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --panel: #161b22; --text: #e6edf3; --muted: #8b949e; --border: #30363d;
+      --accent: #388bfd; --ok: #3fb950; --warn: #d29922; --err: #f85149;
+      --bb: #4c9aff; --gh: #e6edf3; --chip: #21262d; --log-bg: #010409;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif; }
+  header { padding: 14px 24px; border-bottom: 1px solid var(--border); background: var(--panel); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; flex: 1; }
+  header .arrow { color: var(--muted); }
+  header label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+  main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 60px; display: grid; gap: 16px; }
+  .repos { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { .repos { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+  .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; color: #fff; }
+  .badge.bb { background: var(--bb); } .badge.gh { background: var(--gh); color: var(--panel); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  input[type=text], select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; }
+  input[type=text] { flex: 1; min-width: 0; }
+  button { font: inherit; border: 1px solid var(--border); background: var(--chip); color: var(--text); border-radius: 6px; padding: 7px 12px; cursor: pointer; white-space: nowrap; }
+  button:hover:not(:disabled) { filter: brightness(0.96); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button.danger { color: var(--err); }
+  .info { margin-top: 12px; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 13px; }
+  .info dt { color: var(--muted); } .info dd { margin: 0; word-break: break-all; }
+  .warn { color: var(--warn); font-size: 13px; margin: 8px 0 0; padding-left: 18px; }
+  .error { color: var(--err); font-size: 13px; margin-top: 8px; }
+  .empty { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12.5px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .toolbar .spacer { flex: 1; }
+  .table-wrap { max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 600; z-index: 1; }
+  td.name { white-space: normal; word-break: break-all; }
+  tr:last-child td { border-bottom: 0; }
+  .tag { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--chip); color: var(--muted); }
+  .tag.new { color: var(--accent); } .tag.same { color: var(--ok); } .tag.diff { color: var(--warn); }
+  .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 16px; }
+  .opts label { display: flex; gap: 8px; align-items: flex-start; }
+  .opts small { display: block; color: var(--muted); }
+  .opts small.danger { color: var(--err); }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; flex-wrap: wrap; }
+  #log { background: var(--log-bg); color: var(--log-text); border-radius: 8px; padding: 12px; height: 380px; overflow: auto; margin: 0; white-space: pre-wrap; word-break: break-all; }
+  #log .cmd { color: #79c0ff; } #log .ok { color: #56d364; } #log .err { color: #ff7b72; }
+  #log .warn { color: #e3b341; } #log .muted { color: #8b949e; } #log .info { color: #fff; font-weight: 600; }
+  .status { font-size: 13px; color: var(--muted); }
+  .summary { margin-top: 10px; font-size: 13px; }
+  dialog { border: 1px solid var(--border); border-radius: 10px; padding: 0; width: min(640px, calc(100vw - 32px)); background: var(--panel); color: var(--text); }
+  dialog::backdrop { background: rgb(0 0 0 / .4); }
+  .dlg-head { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .dlg-list { height: 380px; overflow: auto; }
+  .dlg-list div { padding: 7px 16px; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+  .dlg-list div:hover { background: var(--chip); }
+  .dlg-foot { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+  .dlg-foot .status { flex: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Bitbucket <span class="arrow">→</span> GitHub Migrator</h1>
+  <label><span data-i18n="language"></span> <select id="lang"></select></label>
+</header>
+
+<main>
+  <section class="repos">
+    <div class="card" id="card-source">
+      <h2><span class="badge bb">Bitbucket</span> <span data-i18n="sourceTitle"></span></h2>
+      <div class="row">
+        <input type="text" data-field="path" data-i18n-placeholder="sourcePlaceholder">
+        <button data-act="pick" data-i18n="pick" data-i18n-title="pickTitle"></button>
+        <button data-act="browse" data-i18n="browse" data-i18n-title="browseTitle"></button>
+      </div>
+      <div data-field="details"></div>
+    </div>
+    <div class="card" id="card-target">
+      <h2><span class="badge gh">GitHub</span> <span data-i18n="targetTitle"></span></h2>
+      <div class="row">
+        <input type="text" data-field="path" data-i18n-placeholder="targetPlaceholder">
+        <button data-act="pick" data-i18n="pick" data-i18n-title="pickTitle"></button>
+        <button data-act="browse" data-i18n="browse" data-i18n-title="browseTitle"></button>
+      </div>
+      <div data-field="details"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="branchesTitle"></h2>
+    <div class="toolbar">
+      <input type="text" id="filter" data-i18n-placeholder="filterPlaceholder" style="max-width: 260px">
+      <button id="sel-all" data-i18n="selectAll"></button>
+      <button id="sel-none" data-i18n="selectNone"></button>
+      <span class="spacer"></span>
+      <label class="status"><span data-i18n="preferLabel"></span>
+        <select id="prefer">
+          <option value="remote" data-i18n="preferRemote"></option>
+          <option value="local" data-i18n="preferLocal"></option>
+        </select>
+      </label>
+    </div>
+    <div id="branches"></div>
+  </section>
+
+  <section class="card">
+    <h2 data-i18n="optionsTitle"></h2>
+    <div class="opts">
+      <label><input type="checkbox" id="opt-fetch" checked><span><span data-i18n="optFetch"></span><small data-i18n="optFetchHint"></small></span></label>
+      <label><input type="checkbox" id="opt-tags" checked><span><span data-i18n="optTags"></span><small id="tag-count">—</small></span></label>
+      <label><input type="checkbox" id="opt-sync" checked><span><span data-i18n="optSync"></span><small data-i18n="optSyncHint"></small></span></label>
+      <label><input type="checkbox" id="opt-lfs"><span><span data-i18n="optLfs"></span><small data-i18n="optLfsHint"></small></span></label>
+      <label><input type="checkbox" id="opt-force"><span><span data-i18n="optForce"></span><small class="danger" data-i18n="optForceHint"></small></span></label>
+    </div>
+    <div class="actions">
+      <button id="btn-dry" data-i18n="btnDry"></button>
+      <button id="btn-run" class="primary" data-i18n="btnRun"></button>
+      <button id="btn-cancel" class="danger" data-i18n="btnCancel" hidden></button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="toolbar">
+      <h2 style="margin:0" data-i18n="logTitle"></h2>
+      <span class="spacer"></span>
+      <span class="status" id="job-status"></span>
+      <button id="btn-clear" data-i18n="clearLog"></button>
+    </div>
+    <pre id="log"></pre>
+    <div class="summary" id="summary"></div>
+  </section>
+</main>
+
+<dialog id="browser">
+  <div class="dlg-head">
+    <div class="row">
+      <button id="dlg-up" data-i18n-title="dlgUp">↑</button>
+      <input type="text" id="dlg-path" data-i18n-placeholder="dlgPath">
+      <button id="dlg-go" data-i18n="dlgGo"></button>
+    </div>
+  </div>
+  <div class="dlg-list" id="dlg-list"></div>
+  <div class="dlg-foot">
+    <span class="status" id="dlg-status"></span>
+    <button id="dlg-cancel" data-i18n="dlgCancel"></button>
+    <button id="dlg-ok" class="primary" data-i18n="dlgOk"></button>
+  </div>
+</dialog>
+
+<script src="i18n.js"></script>
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const short = (sha) => (sha ? sha.slice(0, 8) : '');
+const t = (key, params) => i18n.t(key, params);
+// Errors from the server carry a message key; anything else falls back to its raw text.
+const errText = (err) => (err.code ? t(err.code, err.params) : err.message);
+
+async function api(url, body) {
+  const res = await fetch(url, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || `HTTP ${res.status}`), { code: data.code, params: data.params });
+  return data;
+}
+
+const store = {
+  get(k) { try { return localStorage.getItem('b2g.' + k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem('b2g.' + k, v); } catch {} },
+};
+
+// ---------------------------------------------------------------- language
+function applyStatic() {
+  document.documentElement.lang = i18n.lang;
+  for (const el of $$('[data-i18n]')) el.textContent = t(el.dataset.i18n);
+  for (const el of $$('[data-i18n-placeholder]')) el.placeholder = t(el.dataset.i18nPlaceholder);
+  for (const el of $$('[data-i18n-title]')) el.title = t(el.dataset.i18nTitle);
+}
+
+function setLanguage(lang) {
+  i18n.lang = MESSAGES[lang] ? lang : 'en';
+  store.set('lang', i18n.lang);
+  $('#lang').value = i18n.lang;
+  applyStatic();
+  for (const role of ['source', 'target']) renderDetails(role);
+  renderTagCount();
+  refreshBranches();
+  renderLog();
+  renderJobStatus();
+}
+
+$('#lang').innerHTML = LANGUAGES.map(([code, name]) => `<option value="${code}">${esc(name)}</option>`).join('');
+$('#lang').addEventListener('change', (e) => setLanguage(e.target.value));
+
+// ---------------------------------------------------------------- repo cards
+const state = {
+  source: null, target: null,
+  details: { source: null, target: null }, // { loading } | { error } | null
+  selected: new Set(), running: false,
+  job: { phase: 'idle', dryRun: false, status: null, result: null },
+};
+
+function setupCard(role) {
+  const card = $(`#card-${role}`);
+  const input = $('[data-field=path]', card);
+
+  const load = async (remote) => {
+    const p = input.value.trim();
+    if (!p) { state[role] = null; state.details[role] = null; renderDetails(role); refreshBranches(); return; }
+    state.details[role] = { loading: true };
+    renderDetails(role);
+    try {
+      const info = await api('/api/inspect', { path: p, remote, prefer: $('#prefer').value, role });
+      state[role] = info;
+      state.details[role] = null;
+      input.value = info.root;
+      store.set(role, info.root);
+      if (role === 'source') {
+        if (info.lfs) $('#opt-lfs').checked = true;
+        if (!state.keepSelection) state.selected = new Set(info.branches.map((b) => b.name));
+        state.keepSelection = false;
+      }
+    } catch (err) {
+      state[role] = null;
+      state.details[role] = { error: err };
+    }
+    renderDetails(role);
+    renderTagCount();
+    refreshBranches();
+  };
+  card.load = load;
+
+  input.addEventListener('change', () => load());
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') load(); });
+  $('[data-act=pick]', card).addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const title = t(role === 'source' ? 'pickDialogSource' : 'pickDialogTarget');
+      const { path } = await api('/api/pick-folder', { initial: input.value.trim(), title });
+      if (path) { input.value = path; load(); }
+    } catch (err) {
+      alert(errText(err));
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $('[data-act=browse]', card).addEventListener('click', async () => {
+    const path = await openBrowser(input.value.trim() || store.get(role === 'source' ? 'target' : 'source') || '');
+    if (path) { input.value = path; load(); }
+  });
+  $('[data-field=details]', card).addEventListener('change', (e) => {
+    if (e.target.matches('[data-field=remote]')) { if (role === 'source') state.keepSelection = true; load(e.target.value); }
+  });
+
+  const saved = store.get(role);
+  if (saved) { input.value = saved; load(); }
+}
+
+function renderDetails(role) {
+  const el = $(`#card-${role} [data-field=details]`);
+  const d = state.details[role];
+  const info = state[role];
+  if (d?.loading) { el.innerHTML = `<div class="empty">${esc(t('reading'))}</div>`; return; }
+  if (d?.error) { el.innerHTML = `<div class="error">${esc(errText(d.error))}</div>`; return; }
+  if (!info) { el.innerHTML = ''; return; }
+  const remoteSel = info.remotes.length
+    ? `<select data-field="remote">${info.remotes.map((r) => `<option ${r.name === info.remote ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>`
+    : `<span class="error">${esc(t('none'))}</span>`;
+  const local = info.branches.filter((b) => b.localSha).length;
+  const remote = info.branches.filter((b) => b.remoteSha).length;
+  el.innerHTML = `
+    <dl class="info">
+      <dt>${esc(t('remoteLabel'))}</dt><dd>${remoteSel}</dd>
+      <dt>${esc(t('urlLabel'))}</dt><dd class="mono">${esc(info.remoteUrl) || '—'}</dd>
+      <dt>${esc(t('currentBranchLabel'))}</dt><dd>${esc(info.currentBranch || (info.bare ? t('bareRepo') : '—'))}</dd>
+      <dt>${esc(t('branchesLabel'))}</dt><dd>${esc(t('branchesCount', { total: info.branches.length, local, remote, remoteName: info.remote || 'remote' }))}</dd>
+      <dt>${esc(t('tagsLabel'))}</dt><dd>${info.tagCount}${info.lfs ? ' · <span class="tag">Git LFS</span>' : ''}</dd>
+    </dl>
+    ${info.warnings.length ? `<ul class="warn">${info.warnings.map((w) => `<li>${esc(t(w.key, w.params))}</li>`).join('')}</ul>` : ''}`;
+}
+
+function renderTagCount() {
+  $('#tag-count').textContent = state.source ? t('tagCount', { count: state.source.tagCount }) : '—';
+}
+
+// ---------------------------------------------------------------- branches
+function refreshBranches() {
+  const box = $('#branches');
+  const src = state.source;
+  if (!src) { box.innerHTML = `<div class="empty">${esc(t('emptySelectSource'))}</div>`; updateButtons(); return; }
+  if (!src.branches.length) { box.innerHTML = `<div class="empty">${esc(t('noBranches'))}</div>`; updateButtons(); return; }
+
+  const onTarget = new Map((state.target?.branches || []).map((b) => [b.name, b.remoteSha]));
+  const rows = visibleBranches().map((b) => {
+    let status = '<span class="tag">?</span>';
+    if (state.target) {
+      const sha = onTarget.get(b.name);
+      status = !sha ? `<span class="tag new">${esc(t('statusNew'))}</span>`
+        : sha === b.sha ? `<span class="tag same">${esc(t('statusSame'))}</span>`
+        : `<span class="tag diff">${esc(t('statusDiff'))}</span>`;
+    }
+    const diverged = b.diverged ? ` <span class="tag diff" title="${esc(t('divergedTitle'))}">${esc(t('statusDiverged'))}</span>` : '';
+    return `<tr>
+      <td><input type="checkbox" data-branch="${esc(b.name)}" ${state.selected.has(b.name) ? 'checked' : ''}></td>
+      <td class="name">${esc(b.name)}</td>
+      <td class="mono">${short(b.sha)}</td>
+      <td>${b.from === 'remote' ? esc(`${src.remote}/`) : 'local'}${diverged}</td>
+      <td>${status}</td>
+    </tr>`;
+  });
+  box.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th></th><th>${esc(t('colBranch'))}</th><th>${esc(t('colCommit'))}</th><th>${esc(t('colFrom'))}</th><th title="${esc(t('colOnGithubTitle'))}">${esc(t('colOnGithub'))}</th></tr></thead>
+    <tbody>${rows.join('') || `<tr><td colspan="5" class="empty">${esc(t('noMatch'))}</td></tr>`}</tbody>
+  </table></div>
+  <div class="status" style="margin-top:6px">${esc(t('selectedCount', { selected: state.selected.size, total: src.branches.length }))}</div>`;
+  updateButtons();
+}
+
+function visibleBranches() {
+  const q = $('#filter').value.trim().toLowerCase();
+  return (state.source?.branches || []).filter((b) => !q || b.name.toLowerCase().includes(q));
+}
+
+$('#branches').addEventListener('change', (e) => {
+  const name = e.target.dataset.branch;
+  if (name === undefined) return;
+  e.target.checked ? state.selected.add(name) : state.selected.delete(name);
+  refreshBranches();
+});
+$('#filter').addEventListener('input', refreshBranches);
+$('#sel-all').addEventListener('click', () => { visibleBranches().forEach((b) => state.selected.add(b.name)); refreshBranches(); });
+$('#sel-none').addEventListener('click', () => { visibleBranches().forEach((b) => state.selected.delete(b.name)); refreshBranches(); });
+$('#prefer').addEventListener('change', () => { state.keepSelection = true; $('#card-source').load(state.source?.remote); });
+
+// ---------------------------------------------------------------- migration
+function updateButtons() {
+  const ready = state.source && state.target && !state.running && (state.selected.size || $('#opt-tags').checked);
+  $('#btn-run').disabled = !ready;
+  $('#btn-dry').disabled = !ready;
+  $('#btn-cancel').hidden = !state.running;
+}
+$('#opt-tags').addEventListener('change', updateButtons);
+
+const logEl = $('#log');
+const logEntries = [];
+
+function formatEntry(e) {
+  if (!e.key) return (e.level === 'cmd' ? '$ ' : '') + e.text;
+  if (e.key === 'pushResult') return t('pushResult', { ...e.params, flag: t(`flag.${e.params.flag}`).padEnd(12) });
+  return t(e.key, e.params);
+}
+function entryNode(e) {
+  const span = document.createElement('span');
+  span.className = e.level;
+  span.textContent = formatEntry(e) + '\n';
+  return span;
+}
+function appendLog(entry) {
+  logEntries.push(entry);
+  const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
+  logEl.appendChild(entryNode(entry));
+  if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+}
+function renderLog() {
+  const top = logEl.scrollTop;
+  logEl.replaceChildren(...logEntries.map(entryNode));
+  logEl.scrollTop = top;
+}
+$('#btn-clear').addEventListener('click', () => {
+  logEntries.length = 0;
+  renderLog();
+  if (!state.running) { state.job = { phase: 'idle' }; renderJobStatus(); }
+});
+
+function renderJobStatus() {
+  const job = state.job;
+  const suffix = job.dryRun ? t('dryRunSuffix') : '';
+  if (job.phase === 'idle') $('#job-status').textContent = t('notRun');
+  else if (job.phase === 'running') $('#job-status').textContent = t(job.dryRun ? 'runningDry' : 'runningMigrate');
+  else {
+    const key = { success: 'statusSuccess', failed: 'statusFailed', cancelled: 'statusCancelled' }[job.status];
+    $('#job-status').textContent = (key ? t(key) : job.status) + suffix;
+  }
+  const r = job.phase === 'done' ? job.result : null;
+  if (!r) { $('#summary').textContent = ''; return; }
+  const parts = [t('summaryBranches', { n: r.branches }), t('summaryTags', { n: r.tags })];
+  for (const k of ['new', 'fast-forward', 'forced', 'up-to-date', 'rejected']) if (r.stats[k]) parts.push(`${t(`flag.${k}`)}: ${r.stats[k]}`);
+  if (r.verify?.checked) parts.push(t('summaryVerify', { ok: r.verify.checked - r.verify.mismatched.length, total: r.verify.checked }));
+  $('#summary').textContent = parts.join(' · ');
+}
+
+let currentJob = null;
+async function startJob(dryRun) {
+  const force = $('#opt-force').checked;
+  if (!dryRun) {
+    const params = { count: state.selected.size, url: state.target.remoteUrl };
+    const msg = t($('#opt-tags').checked ? 'confirmPushTags' : 'confirmPush', params) +
+      (force ? '\n\n' + t('confirmForce') : '') + '\n\n' + t('confirmContinue');
+    if (!confirm(msg)) return;
+  }
+  state.running = true;
+  state.job = { phase: 'running', dryRun };
+  updateButtons();
+  renderJobStatus();
+  if (logEntries.length) appendLog({ level: 'muted', text: '\n' + '─'.repeat(60) });
+  try {
+    const { jobId } = await api('/api/migrate', {
+      source: state.source.root,
+      target: state.target.root,
+      sourceRemote: state.source.remote,
+      targetRemote: state.target.remote,
+      prefer: $('#prefer').value,
+      branches: [...state.selected].filter((n) => state.source.branches.some((b) => b.name === n)),
+      tags: $('#opt-tags').checked,
+      fetch: $('#opt-fetch').checked,
+      syncTarget: $('#opt-sync').checked,
+      lfs: $('#opt-lfs').checked,
+      force,
+      dryRun,
+    });
+    currentJob = jobId;
+    const es = new EventSource(`/api/jobs/${jobId}/events`);
+    es.addEventListener('log', (e) => appendLog(JSON.parse(e.data)));
+    es.addEventListener('done', (e) => { es.close(); finishJob(JSON.parse(e.data)); });
+    es.onerror = () => { if (es.readyState === EventSource.CLOSED) finishJob({ status: 'failed', result: null }); };
+  } catch (err) {
+    appendLog(err.code ? { level: 'err', key: err.code, params: err.params } : { level: 'err', text: err.message });
+    finishJob({ status: 'failed', result: null });
+  }
+}
+
+function finishJob({ status, result }) {
+  if (!state.running) return;
+  state.running = false;
+  currentJob = null;
+  state.job = { phase: 'done', dryRun: state.job.dryRun, status, result };
+  renderJobStatus();
+  updateButtons();
+  if (!result?.dryRun) $('#card-target').load(state.target?.remote);
+}
+
+$('#btn-run').addEventListener('click', () => startJob(false));
+$('#btn-dry').addEventListener('click', () => startJob(true));
+$('#btn-cancel').addEventListener('click', () => { if (currentJob) api(`/api/jobs/${currentJob}/cancel`, {}).catch(() => {}); });
+
+// ---------------------------------------------------------------- folder browser
+const dlg = $('#browser');
+const dlgState = { path: '', parent: null, resolve: null };
+
+async function dlgNavigate(p) {
+  $('#dlg-status').textContent = t('loading');
+  try {
+    const data = await api(`/api/browse?path=${encodeURIComponent(p)}`);
+    dlgState.path = data.path;
+    dlgState.parent = data.parent;
+    $('#dlg-path').value = data.path;
+    $('#dlg-up').disabled = data.parent === null;
+    $('#dlg-ok').disabled = !data.path;
+    $('#dlg-list').innerHTML = data.entries.map((e) =>
+      `<div data-path="${esc(e.path)}">📁 <span>${esc(e.name)}</span>${e.isGit ? ' <span class="tag same">git</span>' : ''}</div>`
+    ).join('') || `<div class="empty" style="cursor:default">${esc(t('noSubfolders'))}</div>`;
+    $('#dlg-status').textContent = data.isGit ? t('isGitRepo') : '';
+  } catch (err) {
+    $('#dlg-status').textContent = errText(err);
+  }
+}
+
+function openBrowser(start) {
+  return new Promise(async (resolve) => {
+    dlgState.resolve = resolve;
+    if (!start) { const info = await api('/api/info').catch(() => ({})); start = info.home || ''; }
+    dlg.showModal();
+    dlgNavigate(start);
+  });
+}
+function closeBrowser(value) {
+  dlg.close();
+  const r = dlgState.resolve;
+  dlgState.resolve = null;
+  if (r) r(value);
+}
+$('#dlg-list').addEventListener('click', (e) => {
+  const item = e.target.closest('[data-path]');
+  if (item) dlgNavigate(item.dataset.path);
+});
+$('#dlg-up').addEventListener('click', () => dlgNavigate(dlgState.parent ?? ''));
+$('#dlg-go').addEventListener('click', () => dlgNavigate($('#dlg-path').value.trim()));
+$('#dlg-path').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); dlgNavigate($('#dlg-path').value.trim()); } });
+$('#dlg-cancel').addEventListener('click', () => closeBrowser(null));
+$('#dlg-ok').addEventListener('click', () => closeBrowser(dlgState.path));
+dlg.addEventListener('cancel', () => closeBrowser(null));
+
+setLanguage(store.get('lang') || 'en');
+setupCard('source');
+setupCard('target');
+</script>
+</body>
+</html>
