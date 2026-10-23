@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bitbucket → GitHub Migrator</title>
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #fff; --text: #1d2330; --muted: #6b7385; --border: #dde1e8;
+    --accent: #2f6feb; --accent-text: #fff; --ok: #1a7f37; --warn: #9a6700; --err: #cf222e;
+    --bb: #0052cc; --gh: #24292f; --chip: #eef1f5; --log-bg: #0f1419; --log-text: #d6dde6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --panel: #161b22; --text: #e6edf3; --muted: #8b949e; --border: #30363d;
+      --accent: #388bfd; --ok: #3fb950; --warn: #d29922; --err: #f85149;
+      --bb: #4c9aff; --gh: #e6edf3; --chip: #21262d; --log-bg: #010409;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { padding: 18px 24px; border-bottom: 1px solid var(--border); background: var(--panel); display: flex; align-items: center; gap: 12px; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .arrow { color: var(--muted); }
+  main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 60px; display: grid; gap: 16px; }
+  .repos { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 860px) { .repos { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px; min-width: 0; }
+  .card h2 { font-size: 15px; margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+  .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; color: #fff; }
+  .badge.bb { background: var(--bb); } .badge.gh { background: var(--gh); color: var(--panel); }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  input[type=text], select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; }
+  input[type=text] { flex: 1; min-width: 0; }
+  button { font: inherit; border: 1px solid var(--border); background: var(--chip); color: var(--text); border-radius: 6px; padding: 7px 12px; cursor: pointer; white-space: nowrap; }
+  button:hover:not(:disabled) { filter: brightness(0.96); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button.danger { color: var(--err); }
+  .info { margin-top: 12px; display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 13px; }
+  .info dt { color: var(--muted); } .info dd { margin: 0; word-break: break-all; }
+  .warn { color: var(--warn); font-size: 13px; margin: 8px 0 0; padding-left: 18px; }
+  .error { color: var(--err); font-size: 13px; margin-top: 8px; }
+  .empty { color: var(--muted); font-size: 13px; margin-top: 10px; }
+  code, .mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12.5px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .toolbar .spacer { flex: 1; }
+  .table-wrap { max-height: 360px; overflow: auto; border: 1px solid var(--border); border-radius: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { position: sticky; top: 0; background: var(--panel); color: var(--muted); font-weight: 600; z-index: 1; }
+  td.name { white-space: normal; word-break: break-all; }
+  tr:last-child td { border-bottom: 0; }
+  .tag { font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--chip); color: var(--muted); }
+  .tag.new { color: var(--accent); } .tag.same { color: var(--ok); } .tag.diff { color: var(--warn); }
+  .opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 8px 16px; }
+  .opts label { display: flex; gap: 8px; align-items: flex-start; }
+  .opts small { display: block; color: var(--muted); }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; flex-wrap: wrap; }
+  #log { background: var(--log-bg); color: var(--log-text); border-radius: 8px; padding: 12px; height: 380px; overflow: auto; margin: 0; white-space: pre-wrap; word-break: break-all; }
+  #log .cmd { color: #79c0ff; } #log .ok { color: #56d364; } #log .err { color: #ff7b72; }
+  #log .warn { color: #e3b341; } #log .muted { color: #8b949e; } #log .info { color: #fff; font-weight: 600; }
+  .status { font-size: 13px; color: var(--muted); }
+  .summary { margin-top: 10px; font-size: 13px; }
+  dialog { border: 1px solid var(--border); border-radius: 10px; padding: 0; width: min(640px, calc(100vw - 32px)); background: var(--panel); color: var(--text); }
+  dialog::backdrop { background: rgb(0 0 0 / .4); }
+  .dlg-head { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .dlg-list { height: 380px; overflow: auto; }
+  .dlg-list div { padding: 7px 16px; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+  .dlg-list div:hover { background: var(--chip); }
+  .dlg-foot { padding: 12px 16px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; align-items: center; }
+  .dlg-foot .status { flex: 1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Bitbucket <span class="arrow">→</span> GitHub Migrator</h1>
+</header>
+
+<main>
+  <section class="repos">
+    <div class="card" id="card-source">
+      <h2><span class="badge bb">Bitbucket</span> Repo nguồn</h2>
+      <div class="row">
+        <input type="text" data-field="path" placeholder="Đường dẫn thư mục repo Bitbucket đã clone…">
+        <button data-act="pick" title="Mở hộp thoại chọn thư mục của hệ điều hành">Chọn…</button>
+        <button data-act="browse" title="Duyệt thư mục ngay trong trình duyệt">Duyệt</button>
+      </div>
+      <div data-field="details"></div>
+    </div>
+    <div class="card" id="card-target">
+      <h2><span class="badge gh">GitHub</span> Repo đích</h2>
+      <div class="row">
+        <input type="text" data-field="path" placeholder="Đường dẫn thư mục repo GitHub đã clone…">
+        <button data-act="pick" title="Mở hộp thoại chọn thư mục của hệ điều hành">Chọn…</button>
+        <button data-act="browse" title="Duyệt thư mục ngay trong trình duyệt">Duyệt</button>
+      </div>
+      <div data-field="details"></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Nhánh sẽ migrate</h2>
+    <div class="toolbar">
+      <input type="text" id="filter" placeholder="Lọc theo tên nhánh…" style="max-width: 260px">
+      <button id="sel-all">Chọn tất cả</button>
+      <button id="sel-none">Bỏ chọn</button>
+      <span class="spacer"></span>
+      <label class="status">Ưu tiên ref:
+        <select id="prefer">
+          <option value="remote">nhánh remote (origin/*)</option>
+          <option value="local">nhánh local</option>
+        </select>
+      </label>
+    </div>
+    <div id="branches"><div class="empty">Chọn repo nguồn để xem danh sách nhánh.</div></div>
+  </section>
+
+  <section class="card">
+    <h2>Tuỳ chọn</h2>
+    <div class="opts">
+      <label><input type="checkbox" id="opt-fetch" checked><span>Fetch từ Bitbucket trước<small>Lấy toàn bộ nhánh/tag mới nhất trước khi đẩy.</small></span></label>
+      <label><input type="checkbox" id="opt-tags" checked><span>Đẩy tất cả tag<small id="tag-count">—</small></span></label>
+      <label><input type="checkbox" id="opt-sync" checked><span>Cập nhật repo GitHub local<small>Chạy git fetch trong thư mục đích sau khi đẩy.</small></span></label>
+      <label><input type="checkbox" id="opt-lfs"><span>Đồng bộ Git LFS<small>Cần cài git-lfs. Tự bật nếu repo dùng LFS.</small></span></label>
+      <label><input type="checkbox" id="opt-force"><span>Force push<small style="color: var(--err)">Ghi đè lịch sử nhánh/tag đã có trên GitHub.</small></span></label>
+    </div>
+    <div class="actions">
+      <button id="btn-dry">Chạy thử (dry-run)</button>
+      <button id="btn-run" class="primary">Migrate</button>
+      <button id="btn-cancel" class="danger" hidden>Huỷ</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="toolbar">
+      <h2 style="margin:0">Log</h2>
+      <span class="spacer"></span>
+      <span class="status" id="job-status">Chưa chạy.</span>
+      <button id="btn-clear">Xoá log</button>
+    </div>
+    <pre id="log"></pre>
+    <div class="summary" id="summary"></div>
+  </section>
+</main>
+
+<dialog id="browser">
+  <div class="dlg-head">
+    <div class="row">
+      <button id="dlg-up" title="Lên thư mục cha">↑</button>
+      <input type="text" id="dlg-path" placeholder="Đường dẫn">
+      <button id="dlg-go">Đi</button>
+    </div>
+  </div>
+  <div class="dlg-list" id="dlg-list"></div>
+  <div class="dlg-foot">
+    <span class="status" id="dlg-status"></span>
+    <button id="dlg-cancel">Huỷ</button>
+    <button id="dlg-ok" class="primary">Chọn thư mục này</button>
+  </div>
+</dialog>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const short = (sha) => (sha ? sha.slice(0, 8) : '');
+
+async function api(url, body) {
+  const res = await fetch(url, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  return data;
+}
+
+const store = {
+  get(k) { try { return localStorage.getItem('b2g.' + k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem('b2g.' + k, v); } catch {} },
+};
+
+// ---------------------------------------------------------------- repo cards
+const state = { source: null, target: null, selected: new Set(), running: false };
+
+function setupCard(role) {
+  const card = $(`#card-${role}`);
+  const input = $('[data-field=path]', card);
+  const details = $('[data-field=details]', card);
+  const title = role === 'source' ? 'Chọn thư mục repo Bitbucket' : 'Chọn thư mục repo GitHub';
+
+  const load = async (remote) => {
+    const p = input.value.trim();
+    if (!p) { state[role] = null; details.innerHTML = ''; refreshBranches(); return; }
+    details.innerHTML = '<div class="empty">Đang đọc repo…</div>';
+    try {
+      const info = await api('/api/inspect', { path: p, remote, prefer: $('#prefer').value, role });
+      state[role] = info;
+      input.value = info.root;
+      store.set(role, info.root);
+      renderDetails(role, details, info);
+      if (role === 'source') {
+        $('#tag-count').textContent = `${info.tagCount} tag trong repo nguồn.`;
+        if (info.lfs) $('#opt-lfs').checked = true;
+        if (!state.keepSelection) state.selected = new Set(info.branches.map((b) => b.name));
+        state.keepSelection = false;
+      }
+    } catch (err) {
+      state[role] = null;
+      details.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    }
+    refreshBranches();
+  };
+  card.load = load;
+
+  input.addEventListener('change', () => load());
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') load(); });
+  $('[data-act=pick]', card).addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const { path } = await api('/api/pick-folder', { initial: input.value.trim(), title });
+      if (path) { input.value = path; load(); }
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+  $('[data-act=browse]', card).addEventListener('click', async () => {
+    const path = await openBrowser(input.value.trim() || store.get(role === 'source' ? 'target' : 'source') || '');
+    if (path) { input.value = path; load(); }
+  });
+  details.addEventListener('change', (e) => {
+    if (e.target.matches('[data-field=remote]')) { if (role === 'source') state.keepSelection = true; load(e.target.value); }
+  });
+
+  const saved = store.get(role);
+  if (saved) { input.value = saved; load(); }
+}
+
+function renderDetails(role, el, info) {
+  const remoteSel = info.remotes.length
+    ? `<select data-field="remote">${info.remotes.map((r) => `<option ${r.name === info.remote ? 'selected' : ''}>${esc(r.name)}</option>`).join('')}</select>`
+    : '<span class="error">không có</span>';
+  const local = info.branches.filter((b) => b.localSha).length;
+  const remote = info.branches.filter((b) => b.remoteSha).length;
+  el.innerHTML = `
+    <dl class="info">
+      <dt>Remote</dt><dd>${remoteSel}</dd>
+      <dt>URL</dt><dd class="mono">${esc(info.remoteUrl) || '—'}</dd>
+      <dt>Nhánh hiện tại</dt><dd>${esc(info.currentBranch || (info.bare ? '(bare repo)' : '—'))}</dd>
+      <dt>Nhánh</dt><dd>${info.branches.length} (local ${local}, ${esc(info.remote || 'remote')} ${remote})</dd>
+      <dt>Tag</dt><dd>${info.tagCount}${info.lfs ? ' · <span class="tag">Git LFS</span>' : ''}</dd>
+    </dl>
+    ${info.warnings.length ? `<ul class="warn">${info.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}`;
+}
+
+// ---------------------------------------------------------------- branches
+function refreshBranches() {
+  const box = $('#branches');
+  const src = state.source;
+  if (!src) { box.innerHTML = '<div class="empty">Chọn repo nguồn để xem danh sách nhánh.</div>'; updateButtons(); return; }
+  if (!src.branches.length) { box.innerHTML = '<div class="empty">Repo nguồn không có nhánh nào.</div>'; updateButtons(); return; }
+
+  const onTarget = new Map((state.target?.branches || []).map((b) => [b.name, b.remoteSha]));
+  const q = $('#filter').value.trim().toLowerCase();
+  const rows = src.branches.filter((b) => !q || b.name.toLowerCase().includes(q)).map((b) => {
+    let status = '<span class="tag">?</span>';
+    if (state.target) {
+      const t = onTarget.get(b.name);
+      status = !t ? '<span class="tag new">mới</span>' : t === b.sha ? '<span class="tag same">đã giống</span>' : '<span class="tag diff">khác</span>';
+    }
+    return `<tr>
+      <td><input type="checkbox" data-branch="${esc(b.name)}" ${state.selected.has(b.name) ? 'checked' : ''}></td>
+      <td class="name">${esc(b.name)}</td>
+      <td class="mono">${short(b.sha)}</td>
+      <td>${b.from === 'remote' ? esc(`${src.remote}/`) : 'local'}${b.diverged ? ' <span class="tag diff" title="Nhánh local và remote đang khác nhau">lệch</span>' : ''}</td>
+      <td>${status}</td>
+    </tr>`;
+  });
+  box.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr><th></th><th>Nhánh</th><th>Commit</th><th>Lấy từ</th><th title="Dựa trên thông tin tracking của repo GitHub local">Trên GitHub</th></tr></thead>
+    <tbody>${rows.join('') || '<tr><td colspan="5" class="empty">Không có nhánh khớp bộ lọc.</td></tr>'}</tbody>
+  </table></div>
+  <div class="status" style="margin-top:6px">Đã chọn ${state.selected.size}/${src.branches.length} nhánh.</div>`;
+  updateButtons();
+}
+
+$('#branches').addEventListener('change', (e) => {
+  const name = e.target.dataset.branch;
+  if (name === undefined) return;
+  e.target.checked ? state.selected.add(name) : state.selected.delete(name);
+  refreshBranches();
+});
+$('#filter').addEventListener('input', refreshBranches);
+const visibleBranches = () => {
+  const q = $('#filter').value.trim().toLowerCase();
+  return (state.source?.branches || []).filter((b) => !q || b.name.toLowerCase().includes(q));
+};
+$('#sel-all').addEventListener('click', () => { visibleBranches().forEach((b) => state.selected.add(b.name)); refreshBranches(); });
+$('#sel-none').addEventListener('click', () => { visibleBranches().forEach((b) => state.selected.delete(b.name)); refreshBranches(); });
+$('#prefer').addEventListener('change', () => { state.keepSelection = true; $('#card-source').load(state.source?.remote); });
+
+// ---------------------------------------------------------------- migration
+function updateButtons() {
+  const ready = state.source && state.target && !state.running && (state.selected.size || $('#opt-tags').checked);
+  $('#btn-run').disabled = !ready;
+  $('#btn-dry').disabled = !ready;
+  $('#btn-cancel').hidden = !state.running;
+}
+$('#opt-tags').addEventListener('change', updateButtons);
+
+const logEl = $('#log');
+function appendLog({ level, text }) {
+  const atBottom = logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 40;
+  const span = document.createElement('span');
+  span.className = level;
+  span.textContent = (level === 'cmd' ? '$ ' : '') + text + '\n';
+  logEl.appendChild(span);
+  if (atBottom) logEl.scrollTop = logEl.scrollHeight;
+}
+$('#btn-clear').addEventListener('click', () => { logEl.textContent = ''; $('#summary').textContent = ''; });
+
+let currentJob = null;
+async function startJob(dryRun) {
+  const force = $('#opt-force').checked;
+  if (!dryRun) {
+    const msg = `Đẩy ${state.selected.size} nhánh${$('#opt-tags').checked ? ' và tất cả tag' : ''} lên:\n${state.target.remoteUrl}` +
+      (force ? '\n\n⚠ FORCE PUSH: lịch sử trên GitHub sẽ bị ghi đè!' : '') + '\n\nTiếp tục?';
+    if (!confirm(msg)) return;
+  }
+  state.running = true;
+  updateButtons();
+  $('#summary').textContent = '';
+  $('#job-status').textContent = dryRun ? 'Đang chạy thử…' : 'Đang migrate…';
+  if (logEl.textContent) appendLog({ level: 'muted', text: '\n' + '─'.repeat(60) });
+  try {
+    const { jobId } = await api('/api/migrate', {
+      source: state.source.root,
+      target: state.target.root,
+      sourceRemote: state.source.remote,
+      targetRemote: state.target.remote,
+      prefer: $('#prefer').value,
+      branches: [...state.selected].filter((n) => state.source.branches.some((b) => b.name === n)),
+      tags: $('#opt-tags').checked,
+      fetch: $('#opt-fetch').checked,
+      syncTarget: $('#opt-sync').checked,
+      lfs: $('#opt-lfs').checked,
+      force,
+      dryRun,
+    });
+    currentJob = jobId;
+    const es = new EventSource(`/api/jobs/${jobId}/events`);
+    es.addEventListener('log', (e) => appendLog(JSON.parse(e.data)));
+    es.addEventListener('done', (e) => { es.close(); finishJob(JSON.parse(e.data)); });
+    es.onerror = () => { if (es.readyState === EventSource.CLOSED) finishJob({ status: 'failed', result: null }); };
+  } catch (err) {
+    appendLog({ level: 'err', text: err.message });
+    finishJob({ status: 'failed', result: null });
+  }
+}
+
+function finishJob({ status, result }) {
+  if (!state.running) return;
+  state.running = false;
+  currentJob = null;
+  const label = { success: '✔ Thành công', failed: '✘ Thất bại', cancelled: 'Đã huỷ' }[status] || status;
+  $('#job-status').textContent = label + (result?.dryRun ? ' (dry-run)' : '');
+  if (result) {
+    const s = result.stats;
+    const parts = [`${result.branches} nhánh`, `${result.tags} tag`];
+    for (const k of ['new', 'fast-forward', 'forced', 'up-to-date', 'rejected']) if (s[k]) parts.push(`${k}: ${s[k]}`);
+    if (result.verify?.checked) parts.push(`kiểm tra: ${result.verify.checked - result.verify.mismatched.length}/${result.verify.checked} khớp`);
+    $('#summary').textContent = parts.join(' · ');
+  }
+  updateButtons();
+  if (!result?.dryRun) $('#card-target').load(state.target?.remote);
+}
+
+$('#btn-run').addEventListener('click', () => startJob(false));
+$('#btn-dry').addEventListener('click', () => startJob(true));
+$('#btn-cancel').addEventListener('click', () => { if (currentJob) api(`/api/jobs/${currentJob}/cancel`, {}).catch(() => {}); });
+
+// ---------------------------------------------------------------- folder browser
+const dlg = $('#browser');
+let dlgState = { path: '', parent: null, resolve: null };
+
+async function dlgNavigate(p) {
+  $('#dlg-status').textContent = 'Đang tải…';
+  try {
+    const data = await api(`/api/browse?path=${encodeURIComponent(p)}`);
+    dlgState.path = data.path;
+    dlgState.parent = data.parent;
+    $('#dlg-path').value = data.path;
+    $('#dlg-up').disabled = data.parent === null;
+    $('#dlg-ok').disabled = !data.path;
+    $('#dlg-list').innerHTML = data.entries.map((e) =>
+      `<div data-path="${esc(e.path)}">📁 <span>${esc(e.name)}</span>${e.isGit ? ' <span class="tag same">git</span>' : ''}</div>`
+    ).join('') || '<div class="empty" style="cursor:default">(không có thư mục con)</div>';
+    $('#dlg-status').textContent = data.isGit ? 'Thư mục này là git repo.' : '';
+  } catch (err) {
+    $('#dlg-status').textContent = err.message;
+  }
+}
+
+function openBrowser(start) {
+  return new Promise(async (resolve) => {
+    dlgState.resolve = resolve;
+    if (!start) { const info = await api('/api/info').catch(() => ({})); start = info.home || ''; }
+    dlg.showModal();
+    dlgNavigate(start);
+  });
+}
+function closeBrowser(value) {
+  dlg.close();
+  const r = dlgState.resolve;
+  dlgState.resolve = null;
+  if (r) r(value);
+}
+$('#dlg-list').addEventListener('click', (e) => {
+  const item = e.target.closest('[data-path]');
+  if (item) dlgNavigate(item.dataset.path);
+});
+$('#dlg-up').addEventListener('click', () => dlgNavigate(dlgState.parent ?? ''));
+$('#dlg-go').addEventListener('click', () => dlgNavigate($('#dlg-path').value.trim()));
+$('#dlg-path').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); dlgNavigate($('#dlg-path').value.trim()); } });
+$('#dlg-cancel').addEventListener('click', () => closeBrowser(null));
+$('#dlg-ok').addEventListener('click', () => closeBrowser(dlgState.path));
+dlg.addEventListener('cancel', () => closeBrowser(null));
+
+setupCard('source');
+setupCard('target');
+</script>
+</body>
+</html>
